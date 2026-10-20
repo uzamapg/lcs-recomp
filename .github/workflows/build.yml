@@ -25,12 +25,11 @@ jobs:
       - name: Configure
         shell: pwsh
         run: |
-          $llvm = "C:\Program Files\LLVM\bin"
           cmake -S . -B out/lcs-clang -G Ninja -DCMAKE_BUILD_TYPE=Release `
-            -DCMAKE_C_COMPILER="$llvm\clang-cl.exe" `
-            -DCMAKE_CXX_COMPILER="$llvm\clang-cl.exe" `
-            -DCMAKE_LINKER="$llvm\lld-link.exe" `
-            -DCMAKE_RC_COMPILER="$llvm\llvm-rc.exe"
+            -DCMAKE_C_COMPILER="C:/Program Files/LLVM/bin/clang-cl.exe" `
+            -DCMAKE_CXX_COMPILER="C:/Program Files/LLVM/bin/clang-cl.exe" `
+            -DCMAKE_LINKER="C:/Program Files/LLVM/bin/lld-link.exe" `
+            -DCMAKE_RC_COMPILER="C:/Program Files/LLVM/bin/llvm-rc.exe"
 
       - name: Build LCSNative
         shell: pwsh
