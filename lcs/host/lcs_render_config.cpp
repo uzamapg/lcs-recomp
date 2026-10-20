@@ -287,8 +287,8 @@ void apply_rendering_key(LcsConfiguration &config, const std::string &key,
         return;
     }
     if (key == "viewdistance" || key == "drawdistance" || key == "loddistance") {
-        if (!parse_float(value, 1.0f, 4.0f, config.rendering.view_distance))
-            warning(config, line, "Rendering.ViewDistance must be between 1 and 4");
+        if (!parse_float(value, 1.0f, 16.0f, config.rendering.view_distance))
+            warning(config, line, "Rendering.ViewDistance must be between 1 and 16");
         return;
     }
     if (key == "internalwidth") {
@@ -402,6 +402,26 @@ void apply_widescreen_key(LcsConfiguration &config, const std::string &key,
             warning(config, line, "Widescreen.AspectRatio expects 'auto' or 'x:y' (e.g. 21:9)");
         return;
     }
+    if (key == "hudanchored" || key == "anchorhud" || key == "hudmode") {
+        const std::string mode = lowercase_copy(trim_copy(value));
+        if (mode == "anchored" || mode == "anchor" || mode == "edges" || mode == "true") {
+            config.widescreen.hud_anchored = true;
+        } else if (mode == "centered" || mode == "center" || mode == "shrink" || mode == "false") {
+            config.widescreen.hud_anchored = false;
+        } else if (!parse_bool(value, config.widescreen.hud_anchored)) {
+            warning(config, line, "Widescreen.HudAnchored expects true/false");
+        }
+        return;
+    }
+    if (key == "radarheadingscale" || key == "minimaprotation" || key == "minimapspin") {
+        // The minimap heading follows the camera, and Controls.CameraSmoothing
+        // already damps that. Kept as a documented alias so old configs that
+        // used the key still load instead of warning.
+        warning(config, line,
+                "Widescreen.MinimapSpin is now Controls.CameraSmoothing (0-100); "
+                "lower values damp the radar rotation");
+        return;
+    }
     warning(config, line, "unknown [Widescreen] key '" + key + "'");
 }
 
@@ -510,12 +530,12 @@ float rendering_texture_lod_bias() noexcept {
 float view_distance_scale() noexcept {
     const float scale = lcs_render_configuration().rendering.view_distance;
     if (!std::isfinite(scale)) return 1.0f;
-    return std::clamp(scale, 1.0f, 4.0f);
+    return std::clamp(scale, 1.0f, 16.0f);
 }
 
 void lcs_set_view_distance(float value) noexcept {
     if (!std::isfinite(value)) return;
-    value = std::clamp(value, 1.0f, 4.0f);
+    value = std::clamp(value, 1.0f, 16.0f);
     std::lock_guard<std::mutex> guard(global_configuration_mutex());
     global_configuration().rendering.view_distance = value;
 }
@@ -786,6 +806,11 @@ float widescreen_render_stretch() noexcept {
     if (!config.initialized || !config.widescreen.enabled) return 1.0f;
     const InternalResolutionDimensions target = resolve_internal_resolution(config.rendering);
     return widescreen_stretch_factor(config, target.width, target.height);
+}
+
+bool widescreen_hud_anchored() noexcept {
+    const LcsConfiguration &config = lcs_render_configuration();
+    return config.initialized && config.widescreen.enabled && config.widescreen.hud_anchored;
 }
 
 float lcs_widescreen_aspect(float native_aspect) noexcept {

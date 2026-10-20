@@ -1,0 +1,54 @@
+name: build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  windows:
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+
+      - name: Install LLVM and Ninja
+        shell: pwsh
+        run: |
+          choco install llvm ninja -y --no-progress
+          echo "C:\Program Files\LLVM\bin" | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
+
+      - name: Configure
+        shell: pwsh
+        run: |
+          $llvm = "C:\Program Files\LLVM\bin"
+          cmake -S . -B out/lcs-clang -G Ninja -DCMAKE_BUILD_TYPE=Release `
+            -DCMAKE_C_COMPILER="$llvm\clang-cl.exe" `
+            -DCMAKE_CXX_COMPILER="$llvm\clang-cl.exe" `
+            -DCMAKE_LINKER="$llvm\lld-link.exe" `
+            -DCMAKE_RC_COMPILER="$llvm\llvm-rc.exe"
+
+      - name: Build LCSNative
+        shell: pwsh
+        run: ninja -C out/lcs-clang LCSNative
+
+      - name: Build host menu test
+        shell: pwsh
+        run: ninja -C out/lcs-clang lcs_host_menu_test
+
+      - name: Run host menu test
+        shell: pwsh
+        run: ./out/lcs-clang/lcs_host_menu_test.exe
+
+      - uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: LCSNative-windows
+          path: |
+            out/lcs-clang/LCSNative.exe
+            out/lcs-clang/*.dll
+          if-no-files-found: warn

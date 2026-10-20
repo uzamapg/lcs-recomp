@@ -30,6 +30,21 @@ target, with the same four choices. `Desktop` uses the monitor on
 Windows and on Linux. `Rendering.TextureLodBias` shifts texture mip
 selection; negative values keep textures sharper at a distance.
 
+`Rendering.ViewDistance` (1 to 16) scales the LOD distance, far clip,
+fog plane and car model range. Higher values push geometry out and cut
+pop-in; spawn and removal distances keep the game's original scaling so
+traffic density does not change.
+
+`[Widescreen]` widens the field of view to the display aspect ratio.
+`Widescreen.HudAnchored=anchored` keeps HUD elements (radar, counters,
+text) at full size and moves them to the real display corners;
+`centered` is the older behaviour, which shrinks them toward the middle
+to preserve 16:9 proportions.
+
+The minimap heading follows the camera, so `Controls.CameraSmoothing`
+(0-100) also damps the radar rotate/spin seen while standing still;
+lower values smooth the camera and the minimap together.
+
 ## Mouse and keyboard
 
 Edit `[Controls]` in `lcs/config/LCSNative.ini`, then restart. A

@@ -132,6 +132,10 @@ struct WidescreenConfiguration {
     bool enabled{false};
     std::uint32_t aspect_x{0u};
     std::uint32_t aspect_y{0u};
+    // Anchor the HUD to the display edges instead of shrinking it toward the
+    // center. Radar stays in the real bottom-left corner, ammo in the real
+    // top-right, and so on, at full pixel size.
+    bool hud_anchored{true};
 };
 
 inline constexpr float kGameNativeAspectRatio = 16.0f / 9.0f;
@@ -177,6 +181,8 @@ void initialize_lcs_render_configuration(const std::filesystem::path &executable
     std::uint32_t surface_width, std::uint32_t surface_height) noexcept;
 
 [[nodiscard]] float widescreen_render_stretch() noexcept;
+
+[[nodiscard]] bool widescreen_hud_anchored() noexcept;
 
 [[nodiscard]] float widescreen_stretch_factor(
     const LcsConfiguration &configuration,

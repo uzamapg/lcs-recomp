@@ -3724,6 +3724,98 @@ void scale_hud_vertices(std::vector<Vertex> &vertices, std::uint32_t primitive,
     gpu_draw.scissor_y1 = setup.scissor_y1;
 }
 
+// Move HUD groups outward to the real display edges instead of shrinking them
+// toward the center. Each group keeps its pixel size; only its position along
+// the over-wide axis changes. Groups already at the edges move the furthest,
+// centered groups are left alone, matching how a native widescreen HUD behaves.
+// ponytail: O(n^2) grouping capped at 1024 units; swap for a sorted-sweep
+// interval merge if a HUD draw ever exceeds that.
+void anchor_hud_vertices(std::vector<Vertex> &vertices, std::uint32_t primitive,
+                         float width, float height, float full_fraction) {
+    const std::size_t unit = primitive == 6u ? 2u : primitive == 3u ? 3u : vertices.size();
+    const std::size_t units = (vertices.size() + unit - 1u) / unit;
+    if (units == 0u) return;
+
+    static thread_local std::vector<HudBox> boxes;
+    static thread_local std::vector<std::uint32_t> parent;
+    boxes.resize(units);
+    parent.resize(units);
+    for (std::size_t u = 0u; u < units; ++u) {
+        const std::size_t begin = u * unit;
+        const std::size_t end = std::min(begin + unit, vertices.size());
+        HudBox box{vertices[begin].x, vertices[begin].y, vertices[begin].x, vertices[begin].y};
+        for (std::size_t i = begin + 1u; i < end; ++i) {
+            box.x0 = std::min(box.x0, vertices[i].x);
+            box.y0 = std::min(box.y0, vertices[i].y);
+            box.x1 = std::max(box.x1, vertices[i].x);
+            box.y1 = std::max(box.y1, vertices[i].y);
+        }
+        boxes[u] = box;
+        parent[u] = static_cast<std::uint32_t>(u);
+    }
+
+    const auto find = [&](std::uint32_t value) {
+        while (parent[value] != value) {
+            parent[value] = parent[parent[value]];
+            value = parent[value];
+        }
+        return value;
+    };
+    constexpr std::size_t kMaxGroupedUnits = 1024u;
+    if (units > 1u && units <= kMaxGroupedUnits) {
+        for (std::size_t a = 0u; a < units; ++a) {
+            const HudBox &left = boxes[a];
+            for (std::size_t b = a + 1u; b < units; ++b) {
+                const HudBox &right = boxes[b];
+                const float gap = std::min(left.y1 - left.y0, right.y1 - right.y0);
+                if (left.y0 > right.y1 + 1.0f || right.y0 > left.y1 + 1.0f) continue;
+                if (left.x0 > right.x1 + gap || right.x0 > left.x1 + gap) continue;
+                const std::uint32_t root_a = find(static_cast<std::uint32_t>(a));
+                const std::uint32_t root_b = find(static_cast<std::uint32_t>(b));
+                if (root_a != root_b) parent[root_b] = root_a;
+            }
+        }
+    }
+
+    static thread_local std::vector<HudBox> groups;
+    groups.resize(units);
+    for (std::size_t u = 0u; u < units; ++u) {
+        if (find(static_cast<std::uint32_t>(u)) == u) groups[u] = boxes[u];
+    }
+    for (std::size_t u = 0u; u < units; ++u) {
+        const std::uint32_t root = find(static_cast<std::uint32_t>(u));
+        if (root == u) continue;
+        HudBox &group = groups[root];
+        group.x0 = std::min(group.x0, boxes[u].x0);
+        group.y0 = std::min(group.y0, boxes[u].y0);
+        group.x1 = std::max(group.x1, boxes[u].x1);
+        group.y1 = std::max(group.y1, boxes[u].y1);
+    }
+
+    for (std::size_t u = 0u; u < units; ++u) {
+        const HudBox &group = groups[find(static_cast<std::uint32_t>(u))];
+        if (group.x1 - group.x0 >= width * full_fraction ||
+            group.y1 - group.y0 >= height * full_fraction) {
+            continue;
+        }
+        const float center = (group.x0 + group.x1) * 0.5f;
+        // Only move groups that already live in an outer third of the screen.
+        float shift = 0.0f;
+        if (center >= width * 2.0f / 3.0f) {
+            shift = (width - 1.0f) - group.x1;
+        } else if (center <= width / 3.0f) {
+            shift = 0.0f - group.x0;
+        } else {
+            continue;
+        }
+        if (shift == 0.0f) continue;
+        const std::size_t begin = u * unit;
+        const std::size_t end = std::min(begin + unit, vertices.size());
+        for (std::size_t i = begin; i < end; ++i)
+            vertices[i].x += shift;
+    }
+}
+
 }
 
 bool test_ge_bounding_box(const psprecomp::GuestMemory &memory,
@@ -4706,7 +4798,20 @@ bool render_ge_primitive(psprecomp::GuestMemory &memory,
                                kFullWidthFraction, setup, gpu_draw);
         }
 
-        if (hud_candidate && !full_width && hud.shrink != 1.0f) {
+        if (hud_candidate && !full_width && hud.shrink != 1.0f &&
+            widescreen_hud_anchored()) {
+            // Anchor the HUD to the real display edges. No vertex shrink, so
+            // radar, counters and text keep their native size and sit in the
+            // actual corners of an ultrawide screen.
+            std::uint32_t logical_width = 480u;
+            std::uint32_t logical_height = 272u;
+            ge_gpu_backend_display_logical_size(logical_width, logical_height);
+            // Vertices are already in logical-surface units, so the edges are at
+            // logical_width, not the 480-unit reference. Only reposition them.
+            anchor_hud_vertices(vertices, primitive, static_cast<float>(logical_width),
+                                static_cast<float>(logical_height), kFullWidthFraction);
+            gpu_draw.widescreen_hud = true;
+        } else if (hud_candidate && !full_width && hud.shrink != 1.0f) {
             for (Vertex &vertex : vertices)
                 vertex.x = hud.source_center + (vertex.x - hud.source_center) / hud.shrink;
             const auto shrink_scissor = [&](std::int32_t value, bool leading) {
