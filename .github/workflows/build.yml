@@ -41,7 +41,10 @@ jobs:
 
       - name: Run host menu test
         shell: pwsh
-        run: ./out/lcs-clang/lcs_host_menu_test.exe
+        run: |
+          $exe = (Resolve-Path "out/lcs-clang/lcs_host_menu_test.exe").Path
+          & $exe
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - uses: actions/upload-artifact@v4
         if: success()
