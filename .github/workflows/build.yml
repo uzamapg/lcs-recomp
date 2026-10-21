@@ -42,15 +42,18 @@ jobs:
       - name: Run host menu test
         shell: pwsh
         run: |
-          $exe = (Resolve-Path "out/lcs-clang/lcs_host_menu_test.exe").Path
-          & $exe
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $exe = Get-ChildItem -Path out -Recurse -Filter lcs_host_menu_test.exe |
+                 Select-Object -First 1
+          if (-not $exe) { throw "lcs_host_menu_test.exe not found under out/" }
+          Write-Host "running $($exe.FullName)"
+          & $exe.FullName
+          exit $LASTEXITCODE
 
       - uses: actions/upload-artifact@v4
         if: success()
         with:
           name: LCSNative-windows
           path: |
-            out/lcs-clang/LCSNative.exe
-            out/lcs-clang/*.dll
+            out/**/LCSNative.exe
+            out/**/*.dll
           if-no-files-found: warn
